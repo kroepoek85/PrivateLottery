@@ -1,182 +1,156 @@
-# Private List Check (ZAMA FHEVM)
+# Private Lottery — Fully Homomorphic, Privacy‑Preserving Raffle (Zama FHEVM)
 
-Privacy-preserving whitelist/blacklist membership check on Ethereum (Sepolia) using **Fully Homomorphic Encryption (FHE)** on Zama’s FHEVM.
+A minimal dApp demonstrating a **sealed, privacy‑preserving lottery** on-chain:
 
-> **Goal:** let a user prove whether an address is **IN** or **OUT** of a confidential set **without revealing the address or the set**. Only an encrypted boolean is written on-chain; the UI publicly decrypts that boolean later. No raw addresses are ever logged to the console or sent to the chain.
+* Each participant encrypts a small number (e.g., `uint16`) **locally**.
+* The smart contract stores **only ciphertext** and never learns the picks.
+* A winner is selected **without revealing** other players’ numbers.
+
+This repo ships a one‑file frontend (`frontend/public/index.html`) and an FHEVM‑ready Solidity contract (you deploy it and paste the address into the frontend **CONFIG** block).
+
+> **Relayer SDK**: uses `@zama-ai/relayer-sdk-js` **0.2.0** via CDN.
 
 ---
 
 ## ✨ Features
 
-* **Private membership check** for an input address (encrypted `eaddress`).
-* **Encrypted set** of members stored on-chain; comparison uses `FHE.eq` **only**.
-* **Public result**: contract marks the result `makePubliclyDecryptable`, so anyone can call `publicDecrypt(...)`.
-* **Admin helpers** to add addresses to **whitelist** or **blacklist** (the UI encrypts the raw address locally before calling the contract).
-* **No address leakage**: UI logs only handles, proofs, tx hashes, and decrypted booleans.
-* **Pure static frontend** (no bundler needed) powered by **Zama Relayer SDK**.
+* **Private picks** — numbers encrypted in-browser; only opaque handles hit the chain.
+* **On-chain confidentiality** — contract manipulates ciphertexts only.
+* **Simple round flow** — `startRound` → users `join` → `draw`.
+* **Non‑leaking read API** — exposes only round status and winner address.
+* **Modern, compact UI** — dark theme, clear actions, no build step required.
+
+> ⚠️ **Randomness note**: the demo draw is intentionally simple. For production, plug in verifiable randomness (e.g., Chainlink VRF or a beacon) and audit the selection logic.
 
 ---
 
-## 🔧 Tech Stack
+## 🧱 Stack
 
-* **Solidity** (Zama FHEVM):
-
-  * `import { FHE, ebool, eaddress, externalEaddress } from "@fhevm/solidity/lib/FHE.sol"`
-  * Access control with `FHE.allow/allowThis` and **public decrypt** via `FHE.makePubliclyDecryptable`.
-* **Frontend**: Vanilla HTML/JS + **Zama Relayer SDK** (official)
-
-  * `createInstance`, `createEncryptedInput`, `publicDecrypt`.
-  * Ethers v6 for wallet & contract calls.
-
-> Documentation: Zama Relayer SDK — [https://docs.zama.ai/protocol/relayer-sdk-guides/](https://docs.zama.ai/protocol/relayer-sdk-guides/)
+* **Solidity** `^0.8.x`
+* **Zama FHEVM Solidity lib** (`@fhevm/solidity`)
+* **Zama Relayer SDK JS** `0.2.0`
+* **ethers v6**
+* **MetaMask** (EIP‑1193)
+* **Network**: Sepolia testnet by default
 
 ---
 
-## 🏗️ How it works
-
-1. The UI takes an input **address** and encrypts it in the browser via the Relayer SDK, producing a **ciphertext handle** + **proof**.
-2. The contract iterates through its encrypted set (whitelist or blacklist) and uses **`FHE.eq`** to compare with the input `eaddress`.
-3. The contract emits an event with a **result handle** (encrypted boolean) and flags it as **publicly decryptable**.
-4. The UI invokes **`publicDecrypt`** on that handle to display **IN** or **OUT**.
-
-**Security notes**
-
-* Only the encrypted boolean is ever published. Raw addresses and the set members remain encrypted.
-* Console logging is trimmed to exclude raw addresses.
-
----
-
-## 🧱 Contract
-
-* **Network**: Sepolia (chainId `11155111`)
-* **Address**: `0x8Ac1d3E49A73F8328e43719dCF6fBfeF4405937B`
-* **KMS (Sepolia)**: `0x1364cBBf2cDF5032C47d8226a6f6FBD2AFCDacAC`
-* **Key methods (public result)**:
-
-  * `checkWhitelistPublic(bytes32 addrExt, bytes proof) → bytes32`
-  * `checkBlacklistPublic(bytes32 addrExt, bytes proof) → bytes32`
-  * `getLastResultHandle() → bytes32`
-* **Admin methods (UI encrypts the input address before calling):**
-
-  * `addToWhitelist(bytes32 addrExt, bytes proof)`
-  * `addToBlacklist(bytes32 addrExt, bytes proof)`
-* **Event:** `MembershipChecked(address user, bool isWhitelist, uint256 scannedCount, bytes32 resultHandle)`
-
-> Implementation follows Zama guidance: only `FHE.eq` over `eaddress`, **no** arithmetic on `eaddress`.
-
----
-
-## 📁 Repository Layout
+## 📁 Structure
 
 ```
 frontend/
   public/
-    index.html        # Standalone UI (no build step)
+    index.html   # one‑file app (UI + logic). Edit CONFIG here.
 contracts/
-  PrivateListCheck.sol
-scripts/              # optional
-hardhat.config.ts     # if you use Hardhat for local tasks
+  PrivateLottery.sol  # your FHEVM-enabled contract (example name)
 ```
+
+The app is a static site — serve the `frontend/public` folder with any static server.
 
 ---
 
-## 🚀 Quick Start (Frontend)
+## ⚙️ Configuration
 
-**Prerequisites:** MetaMask, Node.js (optional for serving static files).
+Open `frontend/public/index.html` and set the **CONFIG** at the top:
 
-### Option A — open as a static file
-
-* Open `frontend/public/index.html` directly in a modern browser.
-* If your browser blocks crypto features from file://, use Option B below.
-
-### Option B — serve locally
-
-```bash
-# from repo root
-npx serve frontend/public -p 5173    # or any static server
-# then open http://localhost:5173
+```js
+const CONFIG = {
+  NETWORK_NAME: "Sepolia",
+  CHAIN_ID_HEX: "0xaa36a7",
+  CONTRACT_ADDRESS: "0xYourDeployedContract", // ← set your address
+  RELAYER_URL: "https://relayer.testnet.zama.cloud",
+};
 ```
 
-Alternatives:
-
-```bash
-# python
-python3 -m http.server --directory frontend/public 5173
-# or
-npx http-server frontend/public -p 5173 --cors
-```
-
-### Using the dApp
-
-1. Click **Connect MetaMask** (network auto-switches to **Sepolia** if needed).
-2. Choose **Whitelist** or **Blacklist** and paste an address to check (0x…).
-3. Press **Check** → the app encrypts & sends, then shows **IN** or **OUT**.
-4. You can later press **Decrypt Last Result** to re-decrypt the last emitted handle.
-
-### Admin (optional)
-
-* As the contract owner, paste an address into the **Admin** panel and use:
-
-  * **Add to Whitelist** or **Add to Blacklist** — the UI encrypts the address, then calls the contract.
+> Ensure the ABI block matches your deployed contract’s interface. If you extend the contract, update the ABI accordingly in `index.html`.
 
 ---
 
-## 🧩 Installation (full project)
+## 🚀 Quick Start
 
-```bash
-# 1) Clone
-git clone https://github.com/<your-org>/<your-repo>.git
-cd <your-repo>
+1. **Wallet & Network**
 
-# 2) (optional) Install deps if you plan to compile/deploy contracts
-npm i
+   * Install MetaMask and add **Sepolia**.
 
-# 3) Frontend — run a static server
-npx serve frontend/public -p 5173
-```
+2. **Deploy the contract**
 
-**Download as ZIP:**
-If this repo is on GitHub, you can download directly:
+   * Compile & deploy `PrivateLottery.sol` to Sepolia (Hardhat/Foundry).
+   * Copy the deployed address to `CONFIG.CONTRACT_ADDRESS`.
 
-```
-https://github.com/<your-org>/<your-repo>/archive/refs/heads/main.zip
-```
+3. **Serve the frontend**
 
-> Replace `<your-org>/<your-repo>` with your namespace.
+   ```bash
+   # from repo root
+   npx serve frontend/public
+   # or
+   python3 -m http.server --directory frontend/public 5173
+   ```
 
----
+   Open the printed `http://localhost:XXXX`.
 
-## 🔗 Relayer/Gateway (Testnet)
+4. **Use the dApp**
 
-* **Relayer URL**: `https://relayer.testnet.zama.cloud`
-* **Chain**: Sepolia `11155111`
-* **KMS**: `0x1364cBBf2cDF5032C47d8226a6f6FBD2AFCDacAC`
-
----
-
-## 🧪 Console Logging
-
-The console prints only:
-
-* encryption **handle** and **proof** length (never raw addresses),
-* transaction hash and receipt summary,
-* the decrypted boolean value.
-
-To disable logging entirely, search for the small `clog` helper in `index.html` and no-op the calls.
+   * Click **Connect Wallet**.
+   * **Admin** starts a round (`Round ID`).
+   * **Players** join the same `Round ID`, pick a small `uint16`, and submit (encrypted).
+   * **Admin** presses **Draw winner** to finalize.
+   * **Read State** shows `open/closed`, `players` count, and `winner` address.
 
 ---
 
-## ❗ Troubleshooting
+## 🔐 How It Works
 
-* **“Handle … is not allowed for public decryption”**
-  You likely called a non-public method. Use `checkWhitelistPublic` / `checkBlacklistPublic` from the UI.
-* **Invalid address**
-  The UI requires EIP-55 compatible `0x` address (40 hex chars). It validates before sending.
-* **Wrong network**
-  MetaMask must be on **Sepolia**. The app will try to switch automatically.
+* The frontend calls **Relayer SDK** → `createEncryptedInput(contractAddr, userAddr)` and `add16(pick)`.
+* SDK returns `{ handles, inputProof }` (opaque ciphertext + attestation).
+* The contract receives those values (typed as `externalEuint16` + `bytes proof`) and records them without ever seeing plaintext.
+* Winner selection runs on encrypted state / metadata, avoiding pick disclosure.
 
 ---
 
-## ✅ License
+## 🧪 Contract API (expected)
 
-MIT — feel free to use and adapt.
+Typical public methods the UI uses:
+
+* `function startRound(uint256 roundId) external;`
+* `function join(uint256 roundId, externalEuint16 pickExt, bytes calldata proof) external;`
+* `function draw(uint256 roundId) external;`
+* `function playersCount(uint256 roundId) external view returns (uint256);`
+* `function isOpen(uint256 roundId) external view returns (bool);`
+* `function winnerOf(uint256 roundId) external view returns (address);`
+* `function hasJoined(uint256 roundId, address user) external view returns (bool);`
+
+> If your names differ, align the ABI in `index.html` accordingly.
+
+---
+
+## 🧭 Implementation Notes
+
+* **Relayer SDK 0.2.0**
+
+  * Use `createEncryptedInput(contract, user)` (positional args in 0.2.0).
+  * `add16()` pushes the `uint16` value; encrypt once per `join` to bind both handle+proof.
+
+* **No plaintext logs**
+
+  * Ensure your contract does **not** emit or store raw picks. Only handles / round metadata should appear on-chain.
+
+* **Randomness**
+
+  * Replace the demo draw with **VRF** or an **audited randomness source** for real deployments.
+
+
+
+## 🔒 Security (Production)
+
+* Integrate **verifiable randomness** for `draw`.
+* Add **access control** (only owner/admin starts/draws).
+* Pin exact library versions; **audit** the contract and FHE logic.
+* Consider **rate limits / deposits** to mitigate spam and griefing.
+
+
+
+## 📜 License
+
+MIT © Your‑Org / Your‑Name
+
+
